@@ -1,3 +1,8 @@
+# App Specific
+secrets.js
+saveData.json
+
+
 # Logs
 logs
 *.log
