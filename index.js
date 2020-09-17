@@ -7,21 +7,19 @@ const TOKENS = SECRETS.tokens;
 const DEVS = SECRETS.developers;
 
 const client = new Discord.Client({
-  partials: ["MESSAGE", "CHANNEL", "REACTION"],
+  partials: ["MESSAGE", "CHANNEL", "REACTION"]
 });
-
-const prefix = "!";
 
 const startTime = moment();
 
 let lastRoleMessageRegistration; // this is fine for a single server
 
-const saveToJSON = (data) => {
+const saveToJSON = data => {
   // convert JSON object to string
   const strData = JSON.stringify(data);
 
   // write JSON string to a file
-  fs.writeFile("saveData.json", strData, (err) => {
+  fs.writeFile("saveData.json", strData, err => {
     if (err) {
       throw err;
     }
@@ -29,9 +27,13 @@ const saveToJSON = (data) => {
   });
 };
 
+const defaultGuildSettings = {
+  prefix: "!"
+};
+
 const saveData = fs.existsSync("saveData.json")
   ? JSON.parse(fs.readFileSync("saveData.json"))
-  : { guilds: [], reactionListeners: {} };
+  : { guilds: [], reactionListeners: {}, guildSettings: {} };
 
 setInterval(() => saveToJSON(saveData), 1000 * 60 * 30); // 30 minute backup
 
@@ -39,20 +41,51 @@ client.once("ready", () => {
   console.log("Ready!");
 });
 
-client.on("message", (message) => {
+client.on("message", message => {
+  const guildId = message.guild.id;
+  if (
+    !saveData.guildSettings ||
+    !saveData.guildSettings[guildId] ||
+    !saveData.guildSettings[guildId].adminrole
+  ) {
+    saveData.guildSettings = {};
+    saveData.guildSettings[guildId] = Object.assign({}, defaultGuildSettings);
+    saveData.guildSettings[guildId].adminrole = guildId;
+
+    message.channel.send(
+      "Important! You must configure an admin role. Copy the id of the role you want to use for bot administration and put it in the command `!set adminrole [your role id here]` (Without the square brackets). Any user with the provided role will be able to use the administration commands.\n\n**You must set this role to use the features of the bot.**"
+    );
+  }
+
+  const { prefix, adminrole } = saveData.guildSettings[guildId];
+
+  const ADMINS = [...message.guild.members.cache]
+    .filter(([, x]) => x._roles.includes(adminrole))
+    .map(([k]) => k);
+
   const msg = message.content;
   if (!msg.startsWith(prefix)) return;
 
   const [command, ...args] = msg.substring(1).split(" ");
 
-  console.log(command, args);
+  if (
+    saveData.guildSettings[guildId].adminrole ===
+    [...message.guild.roles.cache].find(([, x]) => x.name === "@everyone")[1].id
+  ) {
+    if (command === "set") setProperties(message, args);
+    return;
+  }
 
-  // Debugging
+  // Debugging (owner only)
   if (DEVS[message.author.id]) {
-    // ping command
+    if (command === "guilds") console.log(saveData.guilds);
+    if (command === "forcesave") saveToJSON(saveData);
+  }
+
+  if (ADMINS.includes(message.author.id + "")) {
     if (command === "ping") ping(message, args);
     if (command === "roles") roles(message, args);
-    if (command === "guilds") console.log(saveData.guilds);
+    if (command === "set") setProperties(message, args);
   }
 });
 
@@ -71,19 +104,17 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
   const emoji = reaction._emoji.name.trim();
   const guild = saveData.guilds.find(
-    (k) => k.id === reaction.message.channel.guild.id
+    k => k.id === reaction.message.channel.guild.id
   );
 
   // fetch role
   const role = guild.roles.find(
-    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
+    k => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
   );
   // fetch guildmember
   const [, guildMember] = [...reaction.message.guild.members.cache].find(
     ([u]) => u === user.id
   );
-
-  console.log(role);
 
   guildMember.roles.add(role);
 });
@@ -101,16 +132,14 @@ client.on("messageReactionRemove", async (reaction, user) => {
 
   if (!saveData.reactionListeners[reaction.message.id]) return;
 
-  console.log(reaction);
-
   const emoji = reaction._emoji.name.trim();
   const guild = saveData.guilds.find(
-    (k) => k.id === reaction.message.channel.guild.id
+    k => k.id === reaction.message.channel.guild.id
   );
 
   // fetch role
   const role = guild.roles.find(
-    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
+    k => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
   );
   // fetch guildmember
   const [, guildMember] = [...reaction.message.guild.members.cache].find(
@@ -120,15 +149,36 @@ client.on("messageReactionRemove", async (reaction, user) => {
   guildMember.roles.remove(role);
 });
 
+const setProperties = (message, args) => {
+  if (args.length === 0) return message.reply("Missing arguments.");
+  if (args.includes("prefix") && args.length === 2) {
+    saveData.guildSettings[message.guild.id].prefix = args[1];
+    message.reply(
+      `Updated my command prefix to \`${args[1]}\`. Test me with \`${args[1]}ping\`.`
+    );
+  }
+
+  if (args.includes("adminrole") && args.length === 2) {
+    saveData.guildSettings[message.guild.id].adminrole = args[1];
+    message.reply(
+      `Updated my admin role to \`${
+        args[1]
+      }\`. Assign the role to yourself if you do not already have it and then test me with \`${
+        saveData.guildSettings[message.guild.id].prefix
+      }ping\`.`
+    );
+  }
+};
+
 const ping = (message, args) => {
   let extra = "";
   if (args.includes("extra")) {
     const info = {
-      uptime: moment.duration(startTime.diff(moment())).humanize(),
+      uptime: moment.duration(startTime.diff(moment())).humanize()
     };
 
     extra = Object.keys(info)
-      .map((k) => `${k}: ${info[k]}`)
+      .map(k => `${k}: ${info[k]}`)
       .join("\n");
   }
   const out = `Pong! ${extra ? `\n\n${extra}` : ""}`;
@@ -136,33 +186,27 @@ const ping = (message, args) => {
 };
 
 const roles = (message, args) => {
-  let guild = saveData.guilds.find((x) => x.id === message.guild.id);
+  if (args.length === 0) return message.reply("Missing arguments.");
+
+  let guild = saveData.guilds.find(x => x.id === message.guild.id);
 
   if (args.includes("reload") || !guild) {
-    if (!saveData.guilds.some((g) => g.id === message.guild.id)) {
+    if (!saveData.guilds.some(g => g.id === message.guild.id)) {
       const cleanGuild = JSON.parse(JSON.stringify(message.guild));
       saveData.guilds.push(cleanGuild);
-      guild = saveData.guilds.find((x) => x.id === message.guild.id);
+      guild = saveData.guilds.find(x => x.id === message.guild.id);
     }
   }
 
   if (args.includes("register")) {
     const allRoles = guild.roles
-      .map((k) => {
-        console.log(message.guild);
+      .map(k => {
         const role = [...message.guild.roles.cache].find(([rk]) => rk === k)[1];
         return `\`${k}: ${role.name}\``;
       })
       .join("\n");
 
-    const si = args.indexOf("register");
-
-    /*
-    const [emoji, roleId] = args.slice(si + 1);
-    //console.log(emoji, roleId);
-    */
-
-    const messageId = args[si + 1];
+    const messageId = args[args.indexOf("register") + 1];
 
     lastRoleMessageRegistration = messageId;
 
@@ -185,7 +229,7 @@ const roles = (message, args) => {
     if (!saveData.reactionListeners[lastRoleMessageRegistration]) {
       saveData.reactionListeners[lastRoleMessageRegistration] = {
         description: message.guild.name,
-        roleMap: {},
+        roleMap: {}
       };
     }
 
@@ -196,10 +240,6 @@ const roles = (message, args) => {
     ] = roleId;
 
     message.react("☑️");
-
-    console.log(saveData.reactionListeners[lastRoleMessageRegistration]);
-
-    saveToJSON(saveData);
   }
 };
 
