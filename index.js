@@ -49,7 +49,7 @@ client.on("message", message => {
     !saveData.guildSettings[guildId] ||
     !saveData.guildSettings[guildId].adminrole
   ) {
-    saveData.guildSettings = {};
+    saveData.guildSettings = Object.assign({}, saveData.guildSettings || {});
     saveData.guildSettings[guildId] = Object.assign({}, defaultGuildSettings);
     saveData.guildSettings[guildId].adminrole = guildId;
 
