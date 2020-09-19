@@ -42,6 +42,7 @@ client.once("ready", () => {
 });
 
 client.on("message", message => {
+  if (message.guild === null) return;
   const guildId = message.guild.id;
   if (
     !saveData.guildSettings ||
