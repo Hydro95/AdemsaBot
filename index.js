@@ -7,19 +7,19 @@ const TOKENS = SECRETS.tokens;
 const DEVS = SECRETS.developers;
 
 const client = new Discord.Client({
-  partials: ["MESSAGE", "CHANNEL", "REACTION"]
+  partials: ["MESSAGE", "CHANNEL", "REACTION"],
 });
 
 const startTime = moment();
 
 let lastRoleMessageRegistration; // this is fine for a single server
 
-const saveToJSON = data => {
+const saveToJSON = (data) => {
   // convert JSON object to string
   const strData = JSON.stringify(data);
 
   // write JSON string to a file
-  fs.writeFile("saveData.json", strData, err => {
+  fs.writeFile("saveData.json", strData, (err) => {
     if (err) {
       throw err;
     }
@@ -28,7 +28,7 @@ const saveToJSON = data => {
 };
 
 const defaultGuildSettings = {
-  prefix: "!"
+  prefix: "!",
 };
 
 const saveData = fs.existsSync("saveData.json")
@@ -41,7 +41,7 @@ client.once("ready", () => {
   console.log("Ready!");
 });
 
-client.on("message", message => {
+client.on("message", (message) => {
   if (message.guild === null) return;
   const guildId = message.guild.id;
   if (
@@ -105,12 +105,12 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
   const emoji = reaction._emoji.name.trim();
   const guild = saveData.guilds.find(
-    k => k.id === reaction.message.channel.guild.id
+    (k) => k.id === reaction.message.channel.guild.id
   );
 
   // fetch role
   const role = guild.roles.find(
-    k => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
+    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
   );
   // fetch guildmember
   const [, guildMember] = [...reaction.message.guild.members.cache].find(
@@ -135,12 +135,12 @@ client.on("messageReactionRemove", async (reaction, user) => {
 
   const emoji = reaction._emoji.name.trim();
   const guild = saveData.guilds.find(
-    k => k.id === reaction.message.channel.guild.id
+    (k) => k.id === reaction.message.channel.guild.id
   );
 
   // fetch role
   const role = guild.roles.find(
-    k => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
+    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
   );
   // fetch guildmember
   const [, guildMember] = [...reaction.message.guild.members.cache].find(
@@ -175,11 +175,11 @@ const ping = (message, args) => {
   let extra = "";
   if (args.includes("extra")) {
     const info = {
-      uptime: moment.duration(startTime.diff(moment())).humanize()
+      uptime: moment.duration(startTime.diff(moment())).humanize(),
     };
 
     extra = Object.keys(info)
-      .map(k => `${k}: ${info[k]}`)
+      .map((k) => `${k}: ${info[k]}`)
       .join("\n");
   }
   const out = `Pong! ${extra ? `\n\n${extra}` : ""}`;
@@ -189,19 +189,22 @@ const ping = (message, args) => {
 const roles = (message, args) => {
   if (args.length === 0) return message.reply("Missing arguments.");
 
-  let guild = saveData.guilds.find(x => x.id === message.guild.id);
+  let guild = saveData.guilds.find((x) => x.id === message.guild.id);
 
   if (args.includes("reload") || !guild) {
-    if (!saveData.guilds.some(g => g.id === message.guild.id)) {
-      const cleanGuild = JSON.parse(JSON.stringify(message.guild));
+    const cleanGuild = JSON.parse(JSON.stringify(message.guild));
+    if (!saveData.guilds.some((g) => g.id === message.guild.id)) {
       saveData.guilds.push(cleanGuild);
-      guild = saveData.guilds.find(x => x.id === message.guild.id);
+    } else {
+      const ind = saveData.guilds.findIndex((g) => g.id === message.guild.id);
+      if (ind > -1) saveData.guilds[ind] = cleanGuild;
     }
+    guild = saveData.guilds.find((x) => x.id === message.guild.id);
   }
 
   if (args.includes("register")) {
     const allRoles = guild.roles
-      .map(k => {
+      .map((k) => {
         const role = [...message.guild.roles.cache].find(([rk]) => rk === k)[1];
         return `\`${k}: ${role.name}\``;
       })
@@ -230,7 +233,7 @@ const roles = (message, args) => {
     if (!saveData.reactionListeners[lastRoleMessageRegistration]) {
       saveData.reactionListeners[lastRoleMessageRegistration] = {
         description: message.guild.name,
-        roleMap: {}
+        roleMap: {},
       };
     }
 
