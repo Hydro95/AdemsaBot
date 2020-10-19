@@ -1,18 +1,27 @@
 const Discord = require("discord.js");
 const SECRETS = require("./secrets.js");
-const moment = require("moment");
 const fs = require("fs");
 
 const TOKENS = SECRETS.tokens;
 const DEVS = SECRETS.developers;
 
+const commands = {
+  admin: require("./commands/admin.js"),
+  music: require("./commands/music.js")
+};
+
 const client = new Discord.Client({
   partials: ["MESSAGE", "CHANNEL", "REACTION"]
 });
 
-const startTime = moment();
+const defaultGuildSettings = {
+  prefix: "!",
+  lastRoleMessageRegistration: null
+};
 
-let lastRoleMessageRegistration; // this is fine for a single server
+const saveData = fs.existsSync("saveData.json")
+  ? JSON.parse(fs.readFileSync("saveData.json"))
+  : { guilds: [], reactionListeners: {}, guildSettings: {} };
 
 const saveToJSON = data => {
   // convert JSON object to string
@@ -26,14 +35,6 @@ const saveToJSON = data => {
     console.log("JSON data is saved.");
   });
 };
-
-const defaultGuildSettings = {
-  prefix: "!"
-};
-
-const saveData = fs.existsSync("saveData.json")
-  ? JSON.parse(fs.readFileSync("saveData.json"))
-  : { guilds: [], reactionListeners: {}, guildSettings: {} };
 
 setInterval(() => saveToJSON(saveData), 1000 * 60 * 30); // 30 minute backup
 
@@ -73,20 +74,36 @@ client.on("message", message => {
     saveData.guildSettings[guildId].adminrole ===
     [...message.guild.roles.cache].find(([, x]) => x.name === "@everyone")[1].id
   ) {
-    if (command === "set") setProperties(message, args);
+    if (command === "set")
+      commands.admin.setProperties(message, args, saveData);
     return;
   }
 
   // Debugging (owner only)
   if (DEVS[message.author.id]) {
-    if (command === "guilds") console.log(saveData.guilds);
-    if (command === "forcesave") saveToJSON(saveData);
+    if (command === "guilds") return console.log(saveData.guilds);
+    if (command === "forcesave") return saveToJSON(saveData);
+    if (command === "echo") return message.channel.send(args.join(""));
   }
 
   if (ADMINS.includes(message.author.id + "")) {
-    if (command === "ping") ping(message, args);
-    if (command === "roles") roles(message, args);
-    if (command === "set") setProperties(message, args);
+    if (command === "ping") return commands.admin.ping(message, args);
+    if (command === "roles")
+      return commands.admin.roles(message, args, saveData, guildId);
+    if (command === "set")
+      return commands.admin.setProperties(message, args, saveData);
+  }
+
+  switch (command) {
+    case "music":
+      if (commands.music[args[0]]) {
+        commands.music[args[0]](message, args, saveData);
+      } else {
+        message.reply("I'm sorry, I don't recognize that command.");
+      }
+      break;
+    default:
+      message.reply("I'm sorry, I don't recognize that command.");
   }
 });
 
@@ -149,102 +166,5 @@ client.on("messageReactionRemove", async (reaction, user) => {
 
   guildMember.roles.remove(role);
 });
-
-const setProperties = (message, args) => {
-  if (args.length === 0) return message.reply("Missing arguments.");
-  if (args.includes("prefix") && args.length === 2) {
-    saveData.guildSettings[message.guild.id].prefix = args[1];
-    message.reply(
-      `Updated my command prefix to \`${args[1]}\`. Test me with \`${args[1]}ping\`.`
-    );
-  }
-
-  if (args.includes("adminrole") && args.length === 2) {
-    saveData.guildSettings[message.guild.id].adminrole = args[1];
-    message.reply(
-      `Updated my admin role to \`${
-        args[1]
-      }\`. Assign the role to yourself if you do not already have it and then test me with \`${
-        saveData.guildSettings[message.guild.id].prefix
-      }ping\`.`
-    );
-  }
-};
-
-const ping = (message, args) => {
-  let extra = "";
-  if (args.includes("extra")) {
-    const info = {
-      uptime: moment.duration(startTime.diff(moment())).humanize()
-    };
-
-    extra = Object.keys(info)
-      .map(k => `${k}: ${info[k]}`)
-      .join("\n");
-  }
-  const out = `Pong! ${extra ? `\n\n${extra}` : ""}`;
-  message.reply(out);
-};
-
-const roles = (message, args) => {
-  if (args.length === 0) return message.reply("Missing arguments.");
-
-  let guild = saveData.guilds.find(x => x.id === message.guild.id);
-
-  if (args.includes("reload") || !guild) {
-    const cleanGuild = JSON.parse(JSON.stringify(message.guild));
-    if (!saveData.guilds.some(g => g.id === message.guild.id)) {
-      saveData.guilds.push(cleanGuild);
-    } else {
-      const ind = saveData.guilds.findIndex(g => g.id === message.guild.id);
-      if (ind > -1) saveData.guilds[ind] = cleanGuild;
-    }
-    guild = saveData.guilds.find(x => x.id === message.guild.id);
-  }
-
-  if (args.includes("register")) {
-    const allRoles = guild.roles
-      .map(k => {
-        const role = [...message.guild.roles.cache].find(([rk]) => rk === k)[1];
-        return `\`${k}: ${role.name}\``;
-      })
-      .join("\n");
-
-    const messageId = args[args.indexOf("register") + 1];
-
-    lastRoleMessageRegistration = messageId;
-
-    message.reply(
-      `Starting role registration process for message ${messageId}.\n\nUse the command \`!roles add [emoji] [roleid]\` to allow a user to react to the provided message with the given emoji and receive the given role.\n\nList of all available roles:\n\n${allRoles}\n\n`
-    );
-  }
-
-  if (args.includes("add")) {
-    if (!lastRoleMessageRegistration) {
-      message.reply(
-        "Did you forget to start the registration process? Use command `!roles register [messageId]`"
-      );
-    }
-
-    const si = args.indexOf("add");
-
-    const [emoji, roleId] = args.slice(si + 1);
-
-    if (!saveData.reactionListeners[lastRoleMessageRegistration]) {
-      saveData.reactionListeners[lastRoleMessageRegistration] = {
-        description: message.guild.name,
-        roleMap: {}
-      };
-    }
-
-    const emojiId = (/<a*:(.*?):\d*>/g.exec(emoji) || [0, emoji.trim()])[1];
-
-    saveData.reactionListeners[lastRoleMessageRegistration].roleMap[
-      emojiId
-    ] = roleId;
-
-    message.react("☑️");
-  }
-};
 
 client.login(TOKENS.discord);
