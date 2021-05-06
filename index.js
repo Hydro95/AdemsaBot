@@ -7,28 +7,28 @@ const DEVS = SECRETS.developers;
 
 const commands = {
   admin: require("./commands/admin.js"),
-  music: require("./commands/music.js")
+  music: require("./commands/music.js"),
 };
 
 const client = new Discord.Client({
-  partials: ["MESSAGE", "CHANNEL", "REACTION"]
+  partials: ["MESSAGE", "CHANNEL", "REACTION"],
 });
 
 const defaultGuildSettings = {
   prefix: "!",
-  lastRoleMessageRegistration: null
+  lastRoleMessageRegistration: null,
 };
 
 const saveData = fs.existsSync("saveData.json")
   ? JSON.parse(fs.readFileSync("saveData.json"))
   : { guilds: [], reactionListeners: {}, guildSettings: {} };
 
-const saveToJSON = data => {
+const saveToJSON = (data) => {
   // convert JSON object to string
   const strData = JSON.stringify(data);
 
   // write JSON string to a file
-  fs.writeFile("saveData.json", strData, err => {
+  fs.writeFile("saveData.json", strData, (err) => {
     if (err) {
       throw err;
     }
@@ -42,7 +42,7 @@ client.once("ready", () => {
   console.log("Ready!");
 });
 
-client.on("message", message => {
+client.on("message", (message) => {
   if (message.guild === null) return;
   const guildId = message.guild.id;
   if (
@@ -68,7 +68,7 @@ client.on("message", message => {
   const msg = message.content;
   if (!msg.startsWith(prefix)) return;
 
-  const [command, ...args] = msg.substring(1).split(" ");
+  const [command, ...args] = msg.substring(prefix.length).split(" ");
 
   if (
     saveData.guildSettings[guildId].adminrole ===
@@ -122,12 +122,12 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
   const emoji = reaction._emoji.name.trim();
   const guild = saveData.guilds.find(
-    k => k.id === reaction.message.channel.guild.id
+    (k) => k.id === reaction.message.channel.guild.id
   );
 
   // fetch role
   const role = guild.roles.find(
-    k => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
+    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
   );
   // fetch guildmember
   const [, guildMember] = [...reaction.message.guild.members.cache].find(
@@ -152,12 +152,12 @@ client.on("messageReactionRemove", async (reaction, user) => {
 
   const emoji = reaction._emoji.name.trim();
   const guild = saveData.guilds.find(
-    k => k.id === reaction.message.channel.guild.id
+    (k) => k.id === reaction.message.channel.guild.id
   );
 
   // fetch role
   const role = guild.roles.find(
-    k => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
+    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
   );
   // fetch guildmember
   const [, guildMember] = [...reaction.message.guild.members.cache].find(
