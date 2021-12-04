@@ -13,6 +13,6 @@ module.exports = {
     //
     //            The key is the user's discord ID, the value is for quick reference by
     //            human eyes and does not matter for the functionality of the bot.
-    "195610230434955264": "hydro",
+    "195610230434955264": "lumalivy",
   },
 };
