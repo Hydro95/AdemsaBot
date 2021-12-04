@@ -1,170 +1,225 @@
 const Discord = require("discord.js");
-const SECRETS = require("./secrets.js");
-const fs = require("fs");
+const { tokens, dbUrl, developers } = require("./secrets.js");
+const mongoose = require("mongoose");
+mongoose.connect(dbUrl);
 
-const TOKENS = SECRETS.tokens;
-const DEVS = SECRETS.developers;
+const { MessageActionRow, MessageButton, MessageEmbed } = Discord;
 
-const commands = {
-  admin: require("./commands/admin.js"),
-  music: require("./commands/music.js"),
-};
+const GuildData = require("./models/GuildData.js");
+const ReactionMessage = require("./models/ReactionMessage.js");
+
+const { FLAGS: iFlags } = Discord.Intents;
 
 const client = new Discord.Client({
   partials: ["MESSAGE", "CHANNEL", "REACTION"],
+  intents: new Discord.Intents([
+    iFlags.GUILDS,
+    iFlags.GUILD_MESSAGES,
+    iFlags.GUILD_MESSAGE_REACTIONS,
+  ]),
 });
 
-const defaultGuildSettings = {
-  prefix: "!",
-  lastRoleMessageRegistration: null,
+const matchCommandName = (query, command) => {
+  return query === command || query === `${command}-guild`;
 };
 
-const saveData = fs.existsSync("saveData.json")
-  ? JSON.parse(fs.readFileSync("saveData.json"))
-  : { guilds: [], reactionListeners: {}, guildSettings: {} };
-
-const saveToJSON = (data) => {
-  // convert JSON object to string
-  const strData = JSON.stringify(data);
-
-  // write JSON string to a file
-  fs.writeFile("saveData.json", strData, (err) => {
-    if (err) {
-      throw err;
+client.on("messageReactionAdd", async (reaction, user) => {
+  if (reaction.partial) {
+    try {
+      await reaction.fetch();
+    } catch (error) {
+      console.error("Something went wrong when fetching the message:", error);
+      return;
     }
-    console.log("JSON data is saved.");
-  });
-};
+  }
 
-setInterval(() => saveToJSON(saveData), 1000 * 60 * 30); // 30 minute backup
+  const emoji = reaction.emoji.id
+    ? `<:${reaction.emoji.name}:${reaction.emoji.id}>`
+    : reaction.emoji.name;
+
+  console.log(
+    `${user.username} reacted to ${reaction.message.author.username}'s message (${reaction.message.id}) with ${emoji}`
+  );
+
+  ReactionMessage.find(
+    {
+      guildId: reaction.message.guildId,
+      messageId: reaction.message.id,
+    },
+    async (err, res) => {
+      if (err) {
+        return console.log(err);
+      }
+
+      const rolesToGive = [];
+      res[0].emojiRoles.forEach((v, i) => {
+        if (v.emoji === emoji) rolesToGive.push(i);
+      });
+
+      client.guilds.cache.forEach((g) => {
+        if (g.id === reaction.message.guildId) {
+          g.members.cache.forEach((m) => {
+            if (m.id === user.id) {
+              g.roles.cache.forEach((r) => {
+                if (rolesToGive.includes(r.id)) {
+                  m.roles.add(r);
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+  );
+});
+
+client.on("messageReactionRemove", async (reaction, user) => {
+  if (reaction.partial) {
+    try {
+      await reaction.fetch();
+    } catch (error) {
+      console.error("Something went wrong when fetching the message:", error);
+      return;
+    }
+  }
+
+  const emoji = reaction.emoji.id
+    ? `<:${reaction.emoji.name}:${reaction.emoji.id}>`
+    : reaction.emoji.name;
+
+  console.log(
+    `${user.username} unreacted to ${reaction.message.author.username}'s message (${reaction.message.id}) with ${emoji}`
+  );
+
+  ReactionMessage.find(
+    {
+      guildId: reaction.message.guildId,
+      messageId: reaction.message.id,
+    },
+    async (err, res) => {
+      if (err) {
+        return console.log(err);
+      }
+
+      const rolesToRemove = [];
+      res[0].emojiRoles.forEach((v, i) => {
+        if (v.emoji === emoji) rolesToRemove.push(i);
+      });
+
+      client.guilds.cache.forEach((g) => {
+        if (g.id === reaction.message.guildId) {
+          g.members.cache.forEach((m) => {
+            if (m.id === user.id) {
+              g.roles.cache.forEach((r) => {
+                if (rolesToRemove.includes(r.id)) {
+                  m.roles.remove(r);
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+  );
+});
+
+//Messages
+client.on("interactionCreate", async (inter) => {
+  if (!inter.isCommand()) return;
+  if (!developers.includes(inter.user.id)) {
+    return await inter.reply({
+      content: "You're not authorized to use that command.",
+      ephemeral: true,
+    });
+  }
+  //console.log(inter);
+
+  GuildData.findOneAndUpdate(
+    { guildId: inter.guildId },
+    { $set: { guildId: inter.guildId } },
+    { upsert: true, new: true },
+    (err) => {
+      if (err) return console.log(err);
+      console.log(
+        `[COMMAND] [${inter.commandName}] ${inter.user.username}#${inter.user.discriminator} @ ${inter.member.guild.name}`
+      );
+    }
+  );
+
+  if (matchCommandName(inter.commandName, "ping")) {
+    const buttons = new MessageActionRow().addComponents(
+      new MessageButton()
+        .setCustomId("pingSendSecretPong")
+        .setLabel("Send Secret Pong")
+        .setStyle("PRIMARY")
+    );
+    await inter.reply({ content: "Pong!", components: [buttons] });
+  }
+
+  if (matchCommandName(inter.commandName, "role-assigner")) {
+    console.log(inter);
+    const subCommand = inter.options.getSubcommand();
+
+    if (subCommand === "list") {
+      ReactionMessage.find({ guildId: inter.guildId }, async (err, res) => {
+        if (err) {
+          await inter.reply({
+            content: "Something went wrong. Please contact an admin.",
+          });
+          return console.log(err);
+        }
+        return await inter.reply({
+          content: `Here is a list of all available emojis and their corresponding roles. If any emojis are not visible in this message, the emoji is likely a global one from outside the server.\n${res
+            .map((rm) => {
+              console.log(rm.emojiRoles);
+              const lines = [`Message (id: ${rm.messageId})`];
+              rm.emojiRoles.forEach((er) => {
+                lines.push(`${er.emoji} -> ${er.name}`);
+              });
+              return lines.join("\n");
+            })
+            .join("\n")}`,
+        });
+      });
+    }
+    if (subCommand === "add") {
+      const messageId = inter.options.getString("message-id");
+      const emoji = inter.options.getString("emoji");
+      const role = inter.options.getRole("role");
+
+      ReactionMessage.findOneAndUpdate(
+        { guildId: inter.guildId, messageId },
+        {
+          $set: {
+            guildId: inter.guildId,
+            messageId,
+            [`emojiRoles.${role.id}`]: { emoji, name: role.name },
+          },
+        },
+        { upsert: true, new: true },
+        async (err) => {
+          if (err) {
+            await inter.reply({
+              content: "Something went wrong. Please contact an admin.",
+            });
+            return console.log(err);
+          }
+          console.log(
+            `[ReactionMessage] [UPDATED] ${role.name} -> ${emoji} : ${inter.user.username}#${inter.user.discriminator} @ ${inter.member.guild.name}`
+          );
+          await inter.reply({
+            content: `Updated message (id: ${messageId}) to assign role "${role.name}" when reacted to with "${emoji}".`,
+          });
+        }
+      );
+
+      console.log(emoji, role);
+    }
+  }
+});
 
 client.once("ready", () => {
   console.log("Ready!");
 });
 
-client.on("message", (message) => {
-  if (message.guild === null) return;
-  const guildId = message.guild.id;
-  if (
-    !saveData.guildSettings ||
-    !saveData.guildSettings[guildId] ||
-    !saveData.guildSettings[guildId].adminrole
-  ) {
-    saveData.guildSettings = Object.assign({}, saveData.guildSettings || {});
-    saveData.guildSettings[guildId] = Object.assign({}, defaultGuildSettings);
-    saveData.guildSettings[guildId].adminrole = guildId;
-
-    message.channel.send(
-      "Important! You must configure an admin role. Copy the id of the role you want to use for bot administration and put it in the command `!set adminrole [your role id here]` (Without the square brackets). Any user with the provided role will be able to use the administration commands.\n\n**You must set this role to use the features of the bot.**"
-    );
-  }
-
-  const { prefix, adminrole } = saveData.guildSettings[guildId];
-
-  const ADMINS = [...message.guild.members.cache]
-    .filter(([, x]) => x._roles.includes(adminrole))
-    .map(([k]) => k);
-
-  const msg = message.content;
-  if (!msg.startsWith(prefix)) return;
-
-  const [command, ...args] = msg.substring(prefix.length).split(" ");
-
-  if (
-    saveData.guildSettings[guildId].adminrole ===
-    [...message.guild.roles.cache].find(([, x]) => x.name === "@everyone")[1].id
-  ) {
-    if (command === "set")
-      commands.admin.setProperties(message, args, saveData);
-    return;
-  }
-
-  // Debugging (owner only)
-  if (DEVS[message.author.id]) {
-    if (command === "guilds") return console.log(saveData.guilds);
-    if (command === "forcesave") return saveToJSON(saveData);
-    if (command === "echo") return message.channel.send(args.join(""));
-  }
-
-  if (ADMINS.includes(message.author.id + "")) {
-    if (command === "ping") return commands.admin.ping(message, args);
-    if (command === "roles")
-      return commands.admin.roles(message, args, saveData, guildId);
-    if (command === "set")
-      return commands.admin.setProperties(message, args, saveData);
-  }
-
-  switch (command) {
-    case "music":
-      if (commands.music[args[0]]) {
-        commands.music[args[0]](message, args, saveData);
-      } else {
-        message.reply("I'm sorry, I don't recognize that command.");
-      }
-      break;
-    default:
-      message.reply("I'm sorry, I don't recognize that command.");
-  }
-});
-
-client.on("messageReactionAdd", async (reaction, user) => {
-  if (reaction.partial) {
-    // Handle message being deleted
-    try {
-      await reaction.fetch();
-    } catch (error) {
-      console.log("Something went wrong when fetching the message: ", error);
-      return;
-    }
-  }
-
-  if (!saveData.reactionListeners[reaction.message.id]) return;
-
-  const emoji = reaction._emoji.name.trim();
-  const guild = saveData.guilds.find(
-    (k) => k.id === reaction.message.channel.guild.id
-  );
-
-  // fetch role
-  const role = guild.roles.find(
-    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
-  );
-  // fetch guildmember
-  const [, guildMember] = [...reaction.message.guild.members.cache].find(
-    ([u]) => u === user.id
-  );
-
-  guildMember.roles.add(role);
-});
-
-client.on("messageReactionRemove", async (reaction, user) => {
-  if (reaction.partial) {
-    // Handle message being deleted
-    try {
-      await reaction.fetch();
-    } catch (error) {
-      console.log("Something went wrong when fetching the message: ", error);
-      return;
-    }
-  }
-
-  if (!saveData.reactionListeners[reaction.message.id]) return;
-
-  const emoji = reaction._emoji.name.trim();
-  const guild = saveData.guilds.find(
-    (k) => k.id === reaction.message.channel.guild.id
-  );
-
-  // fetch role
-  const role = guild.roles.find(
-    (k) => k === saveData.reactionListeners[reaction.message.id].roleMap[emoji]
-  );
-  // fetch guildmember
-  const [, guildMember] = [...reaction.message.guild.members.cache].find(
-    ([u]) => u === user.id
-  );
-
-  guildMember.roles.remove(role);
-});
-
-client.login(TOKENS.discord);
+client.login(tokens.discord);
