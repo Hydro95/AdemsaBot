@@ -1,0 +1,63 @@
+{
+  "guilds": [
+    {
+      "guildId": "751532622613839952",
+      "ReactionMessages": [
+        {
+          "messageId": "758521948959145995",
+          "emojiRoles": {
+            "751537707649597530": {
+              "name": "1st Year/1ère année",
+              "emoji": "1️⃣"
+            },
+            "751537737751855137": {
+              "name": "2nd Year/2e année",
+              "emoji": "2️⃣"
+            },
+            "751537765358895275": {
+              "name": "3rd Year/3e année",
+              "emoji": "3️⃣"
+            },
+            "751537822766333953": {
+              "name": "4th Year/4e année",
+              "emoji": "4️⃣"
+            },
+            "751537844866121838": {
+              "name": "5th Year/5e année",
+              "emoji": "5️⃣"
+            }
+          }
+        },
+        {
+          "messageId": "758521983532793857",
+          "emojiRoles": {
+            "751557258944577707": { "name": "Piano", "emoji": "🎹" },
+            "751557337256296598": { "name": "Vocal", "emoji": "🎤" },
+            "751557093995053187": { "name": "Woodwinds/Vents", "emoji": "🎷" },
+            "751556612891607182": { "name": "Brass/Cuivres", "emoji": "🎺" },
+            "751557452641861785": { "name": "Percussion", "emoji": "🥁" },
+            "751556838520258641": { "name": "Strings/Cordes", "emoji": "🎻" }
+          }
+        },
+        {
+          "messageId": "825545011063160903",
+          "emojiRoles": {
+            "779029042963415060": {
+              "name": "Double Degree/Double Baccalauréat",
+              "emoji": "🧑‍🔬"
+            }
+          }
+        },
+        {
+          "messageId": "762018088719482910",
+          "emojiRoles": {
+            "764622729831645225": {
+              "name": "Music Student/Étudiant(e) de musique",
+              "emoji": "☑️"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
